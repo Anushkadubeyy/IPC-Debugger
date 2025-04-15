@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPC Debugger</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1e1e2f, #3a3a5a);
+            text-align: center;
+            padding: 20px;
+            color: white;
+        }
+        .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .box {
+            background: #2a2a3a;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            width: 45%;
+            max-width: 600px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            transition: 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        select, input {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            margin: 5px;
+        }
+        #log-container, #exchange-log {
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #444;
+            background: #1e1e2f;
+            color: white;
+            width: 100%;
+        }
+        #resolve-deadlock {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>IPC Debugger</h1>
+    
+    <div class="container">
+        <div class="box">
+            <h2>Setup Processes</h2>
+            <label for="num-processes">Number of Processes:</label>
+            <input type="number" id="num-processes" value="3" min="2">
+            <br>
+            <label for="num-resources">Total Resources to be Used:</label>
+            <input type="number" id="num-resources" value="50" min="1">            <br>
+            <button onclick="setupProcesses()">Initialize</button>
+        </div>
+
+        <div class="box">
+            <h2>Select IPC Method</h2>
+            <select id="ipc-method">
+                <option value="pipes">Pipes</option>
+                <option value="message-queues">Message Queues</option>
+                <option value="shared-memory">Shared Memory</option>
+                <option value="sockets">Sockets</option>
+            </select>
+            <br>
+            <button onclick="simulateIPC()">Simulate IPC</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="box">
+            <h2>Process Table</h2>
+            <div id="process-table">Processes will be shown here...</div>
+        </div>
+
+        <section id="exchange-panel" class="box">
+            <h2>Data Exchange Simulation</h2>
+            <button onclick="simulateIPC()">Simulate Data Exchange</button>
+            <div id="exchange-log"></div>
+        </section>
+    </div>
+    <section id="debug-panel" class="box">
+        <h2>Deadlock Debugger</h2>
+        <button onclick="checkDeadlock()">Check Deadlock</button>
+        <select id="deadlock-type">
+            <option value="circular-wait">Circular Wait</option>
+            <option value="mutual-exclusion">Mutual Exclusion</option>
+            <option value="hold-and-wait">Hold and Wait</option>
+            <option value="non-preemptive">Non-Preemptive</option>
+        </select>
+        <button onclick="simulateDeadlock()">Simulate Deadlock</button>
+        <button id="resolve-deadlock" onclick="resolveDeadlock()">Resolve Deadlock</button>
+        <button onclick="clearDebugLog()">Clear Log</button>
+        <div id="log-container"></div>
+    </section>
+    <script>
+        let processes = [];
+
+        function setupProcesses() {
+            const numProcesses = parseInt(document.getElementById("num-processes").value);
+            const totalResources = parseInt(document.getElementById("num-resources").value);
+            
+            processes = [];
+            let remainingResources = totalResources;
+
+            for (let i = 1; i <= numProcesses; i++) {
+                if (remainingResources <= 0) break;
+
+                // Assign resources fairly so total does not exceed the limit
+                let allocated = Math.floor(Math.random() * (remainingResources / (numProcesses - i + 1))); 
+                let requested = Math.floor(Math.random() * (remainingResources / 2)); 
+
+                processes.push({ id: `P${i}`, allocated, requested });
+
+                remainingResources -= allocated; // Deduct used resources
+            }
+
+            updateProcessTable();
+            logMessage(`Initialized ${processes.length} processes within a total of ${totalResources} resources.`);
+        }
+
+
+        function updateProcessTable() {
+            let table = `<table border="1" width="100%"><tr><th>Process</th><th>Allocated</th><th>Requested</th></tr>`;
+            processes.forEach(p => {
+                table += `<tr><td>${p.id}</td><td>${p.allocated}</td><td>${p.requested}</td></tr>`;
+            });
+            table += `</table>`;
+            document.getElementById("process-table").innerHTML = table;
+        }
+
+        function simulateIPC() {
+            if (processes.length < 2) {
+                logMessage("At least two processes are required for data exchange.");
+                return;
+            }
+
+            const ipcMethod = document.getElementById("ipc-method").value;
+            let exchangeLog = document.getElementById("exchange-log");
+            exchangeLog.innerHTML = ""; // Clear previous logs
+
+            let usedReceivers = new Set();
+            processes.forEach(sender => {
+                let receiver;
+                do {
+                    receiver = processes[Math.floor(Math.random() * processes.length)];
+                } while (sender.id === receiver.id || usedReceivers.has(receiver.id));
+
+                usedReceivers.add(receiver.id);
+
+                const dataSize = Math.floor(Math.random() * 500) + 100;
+                const timestamp = new Date().toLocaleTimeString();
+                
+                const message = `🔄 ${sender.id} sent ${dataSize} bytes to ${receiver.id} using ${ipcMethod} at ${timestamp}`;
+                logExchange(message);
+                logMessage(message);
+            });
+        }
+
+
+    
+        function simulateDeadlock() {
+    const type = document.getElementById("deadlock-type").value;
+    deadlockDetected = true;
+    document.getElementById("resolve-deadlock").style.display = "block";
+
+    let deadlockPoint = Math.floor(Math.random() * (processes.length - 1)); // Pick a random break point
+    let breakingProcess = processes[deadlockPoint].id;
+    let nextProcess = processes[deadlockPoint + 1].id;
+
+    let reason = "";
+    switch (type) {
+        case "circular-wait":
+            reason = `Process ${breakingProcess} is waiting for a resource held by ${nextProcess}, creating a cycle.`;
+            break;
+        case "mutual-exclusion":
+            reason = `A resource is non-shareable, causing ${breakingProcess} to wait indefinitely.`;
+            break;
+        case "hold-and-wait":
+            reason = `Process ${breakingProcess} is holding some resources while waiting for more, preventing ${nextProcess} from proceeding.`;
+            break;
+        case "non-preemptive":
+            reason = `Process ${breakingProcess} cannot be preempted, blocking ${nextProcess} from execution.`;
+            break;
+        default:
+            reason = `A generic deadlock situation has occurred.`;
+    }
+
+    logMessage(`⚠️ Deadlock simulated: ${type}`);
+    logMessage(`🔴 Deadlock occurred at Process ${breakingProcess} → ${nextProcess}`);
+    logMessage(`❌ Reason: ${reason}`);
+
+    // Generate table showing process allocation and request
+    let table = `<table border="1" width="100%">
+                    <tr><th>Process</th><th>Allocated Resources</th><th>Requested Resources</th></tr>`;
+    processes.forEach(p => {
+        table += `<tr><td>${p.id}</td><td>${p.allocated}</td><td>${p.requested}</td></tr>`;
+    });
+    table += `</table>`;
+
+    // Display the table in the log container
+    document.getElementById("log-container").innerHTML += table;
+}
+
+
+
+        let deadlockExists = false;
+        let deadlockedProcesses = [];
+
+function checkDeadlock() {
+    if (processes.length === 0) {
+        logMessage("⚠️ No processes initialized. Initialize processes first.");
+        return;
+    }
+
+    const totalResources = parseInt(document.getElementById("num-resources").value);
+    let availableResources = totalResources;
+    
+    // Calculate total allocated resources
+    processes.forEach(p => {
+        availableResources -= p.allocated;
+    });
+
+    let work = availableResources;
+    let finish = Array(processes.length).fill(false); // Track if a process can finish
+
+    deadlockExists = false;
+    deadlockedProcesses = [];
+
+    // Introduce random deadlock behavior (20% chance)
+    let forceDeadlock = Math.random() < 0.2;
+
+    for (let i = 0; i < processes.length; i++) {
+        if (!finish[i] && processes[i].requested <= work) {
+            if (forceDeadlock && Math.random() < 0.5) {
+                // Randomly choose some processes to be "stuck"
+                deadlockedProcesses.push(processes[i].id);
+                continue; // Skip giving resources to this process
+            }
+
+            work += processes[i].allocated; // Release resources after finishing
+            finish[i] = true;
+            i = -1; // Restart loop to check all processes again
+        }
+    }
+
+    deadlockExists = finish.includes(false);
+
+    if (deadlockExists) {
+        logMessage("🚨 Deadlock detected! The following processes are stuck: " + deadlockedProcesses.join(", "));
+        document.getElementById("resolve-deadlock").style.display = "block";
+    } else {
+        logMessage("✅ No deadlock detected. All processes can finish safely.");
+    }
+}
+
+function resolveDeadlock() {
+    if (!deadlockExists) {
+        logMessage("✅ No deadlock to resolve.");
+        return;
+    }
+
+    let resolution = "";
+    
+    // Simple resolution strategy: Preempt resources from deadlocked processes
+    if (deadlockedProcesses.length > 0) {
+        let processToKill = deadlockedProcesses[0]; // Select first stuck process
+        let index = processes.findIndex(p => p.id === processToKill);
+        
+        if (index !== -1) {
+            let freedResources = processes[index].allocated;
+            logMessage(`🔴 Terminating ${processToKill} to free ${freedResources} resources.`);
+            processes.splice(index, 1); // Remove process
+        }
+    }
+
+    resolution = "Preempting resources from deadlocked processes and rechecking system.";
+    logMessage("✔️ Deadlock resolved. " + resolution);
+    document.getElementById("resolve-deadlock").style.display = "none";
+
+    // Re-check for deadlocks after resolution
+    checkDeadlock();
+}
+
+
+        function resolveDeadlock() {
+            if (deadlockDetected) {
+                let resolution = "";
+                let newProcessSequence = [...processes]; // Copy of processes to show new sequence
+                
+                switch (document.getElementById("deadlock-type").value) {
+                    case "circular-wait":
+                        resolution = "Breaking the circular chain by preempting a resource or reordering requests.";
+                        newProcessSequence.reverse(); // Reordering to prevent circular wait
+                        break;
+                    case "mutual-exclusion":
+                        resolution = "Using resource sharing or making resources preemptible to avoid exclusivity.";
+                        newProcessSequence.sort((a, b) => a.allocated - b.allocated); // Sort based on allocated resources
+                        break;
+                    case "hold-and-wait":
+                        resolution = "Forcing processes to request all resources at once or release held resources before requesting new ones.";
+                        newProcessSequence.forEach(p => p.allocated = 0); // All processes release resources before requesting
+                        break;
+                    case "non-preemptive":
+                        resolution = "Introducing resource preemption or ensuring processes release resources in a timely manner.";
+                        newProcessSequence.forEach(p => p.allocated += 5); // Simulating resource preemption
+                        break;
+                    default:
+                        resolution = "Applied a general deadlock prevention strategy.";
+                }
+
+                deadlockDetected = false;
+                document.getElementById("resolve-deadlock").style.display = "none";
+                
+                logMessage("✔️ Deadlock resolved.");
+                logMessage(`ℹ️ Resolution Applied: ${resolution}`);
+                
+                // Display new process sequence
+                let sequenceLog = "🔄 New Process Execution Order: " + newProcessSequence.map(p => p.id).join(" → ");
+                logMessage(sequenceLog);
+            }
+        }
+
+
+        
+
+         function logExchange(message) {
+            const exchangeLog = document.getElementById("exchange-log");
+            const logEntry = document.createElement("p");
+            logEntry.textContent = message;
+            exchangeLog.appendChild(logEntry);
+        }
+
+        function logMessage(message) {
+            const logContainer = document.getElementById("log-container");
+            const logEntry = document.createElement("p");
+            logEntry.textContent = message;
+            logContainer.appendChild(logEntry);
+        }
+
+        function clearExchangeLog() {
+            document.getElementById("exchange-log").innerHTML = "";
+        }
+
+        function clearDebugLog() {
+            document.getElementById("log-container").innerHTML = "";
+        }
+
+        function logExchange(message) {
+            const exchangeLog = document.getElementById("exchange-log");
+            const logEntry = document.createElement("p");
+            logEntry.textContent = message;
+            exchangeLog.appendChild(logEntry);
+        }
+
+        function logMessage(message) {
+            const logContainer = document.getElementById("log-container");
+            const logEntry = document.createElement("p");
+            logEntry.textContent = message;
+            logContainer.appendChild(logEntry);
+        }
+    </script>
+</body>
+</html>
